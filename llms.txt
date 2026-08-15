@@ -1,0 +1,16 @@
+# dsh-mobile-pwa
+
+> Complete mobile PWA for DeepSeek Harness (DSH): secure remote access gateway + install-to-homescreen + offline + touch gestures + agent-done push.
+
+## Key facts
+- Repo: <you>/dsh-mobile-pwa. MIT license, `dsh-plugin` topic. Derivative of `dsh-mobile-gate` (MIT).
+- Install: `dsh plugin --profile web add ./dsh-mobile-pwa`.
+- Architecture: standalone child-process Node gateway (zero-dep), reverse-proxies approved LAN/Tailscale devices to DSH on 127.0.0.1; DSH webserver untouched (cannot bind 0.0.0.0). HTML injection adds PWA manifest link, service-worker bootstrap, touch CSS, randomUUID polyfill.
+- Gateway serves `/pwa/*` assets (manifest, sw.js, app.css, icons, offline.html) + `/pwa/push/*` (agent-done notifications).
+- Env: `LAN_GATE_PORT` (3088), `LAN_GATE_HOST` (0.0.0.0), `LAN_GATE_TARGET_PORT` (3080), `LAN_GATE_RATE_LIMIT` (120), `LAN_GATE_VAPID_PUBLICKEY`.
+- Admin: http://127.0.0.1:<port>/lan-gate/admin — approve/deny/revoke devices, pick phone/desktop/auto.
+- Security: first-visit approval, one-token-per-browser, 120 req/min per IP, loopback & LAN bypass.
+
+## Docs
+- README.md (中文), README.en.md (English), AGENTS.md (dev guide), LICENSE.
+- .ai/ — AI Project OS state, memory, decisions, tasks.

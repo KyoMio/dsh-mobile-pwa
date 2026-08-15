@@ -4,6 +4,10 @@
 
 基于 MIT 的 [`dsh-mobile-gate`](https://github.com/Bernardxu123/dsh-mobile-gate)（安全网关基座）做差异化增强。
 
+[![npm version](https://img.shields.io/npm/v/dsh-mobile-pwa)](https://www.npmjs.com/package/dsh-mobile-pwa)
+[![license](https://img.shields.io/github/license/zylzyqzz/dsh-mobile-pwa)](https://github.com/zylzyqzz/dsh-mobile-pwa/blob/main/LICENSE)
+[![dsh-plugin](https://img.shields.io/badge/dsh--plugin-ready-4c8dff)](https://github.com/topics/dsh-plugin)
+
 📍 生态定位：社区现有移动端方案都停留在「窄屏 CSS 微调」，本项目做的是**移动端 PWA 一站式完整方案**。
 
 ---
@@ -43,17 +47,27 @@
 
 ## 🚀 快速开始（在你自己的 DSH 服务器上）
 
-### 方式零：`dsh plugin add`（标准安装，推荐）
+### 方式零：npm 一键安装（推荐，已发布）
+
+从 npm 直接安装，`dsh plugin add` 走预构建，**无需 `allowBuilds` 授权**：
 
 ```bash
-git clone https://github.com/<you>/dsh-mobile-pwa.git
+npm add dsh-mobile-pwa   # 或: npm install dsh-mobile-pwa@0.1.0
+dsh plugin --profile web add dsh-mobile-pwa
+```
+
+> 已声明 `dsh.bundle` manifest，安装后自动激活配置层，无需手写 patch。
+> 包：https://www.npmjs.com/package/dsh-mobile-pwa
+
+### 方式一：从 GitHub 本地安装
+
+```bash
+git clone https://github.com/zylzyqzz/dsh-mobile-pwa.git
 cd dsh-mobile-pwa
 dsh plugin --profile web add ./dsh-mobile-pwa
 ```
 
-> 已声明 `dsh.bundle` manifest，安装后自动激活配置层，无需手写 patch。
-
-### 方式一 / 方式二：静态挂载 / 动态插件
+### 方式二 / 方式三：静态挂载 / 动态插件
 
 - 静态挂载：参考 [`cordis.patch.yml.example`](cordis.patch.yml.example)，把绝对路径替换进你的 profile patch。
 - 动态插件：见 `lan-gate.mjs` 的注释（Cordis 动态插件包）。

@@ -37,13 +37,29 @@ Host 127.0.0.1:3088/lan-gate/admin -> approve / deny / revoke devices, pick acce
 
 ## Quick start (on your own DSH server)
 
+### Option 0 — npm one-liner (recommended, published)
+
+Install straight from npm — prebuilt, **no `allowBuilds` approval needed**:
+
 ```bash
-git clone https://github.com/<you>/dsh-mobile-pwa.git
+npm add dsh-mobile-pwa     # or: npm install dsh-mobile-pwa@0.1.0
+dsh plugin --profile web add dsh-mobile-pwa
+```
+
+Package: https://www.npmjs.com/package/dsh-mobile-pwa
+
+### Option 1 — from GitHub
+
+```bash
+git clone https://github.com/zylzyqzz/dsh-mobile-pwa.git
 cd dsh-mobile-pwa
 dsh plugin --profile web add ./dsh-mobile-pwa
 ```
 
+### Option 2 / 3 — static mount / dynamic plugin
+
 Or static-mount via [`cordis.patch.yml.example`](cordis.patch.yml.example).
+Dynamic plugin: see the `lan-gate.mjs` header comments.
 
 ### Env config
 

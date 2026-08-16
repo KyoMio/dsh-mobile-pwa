@@ -126,6 +126,23 @@ dsh.example.com {
 
 > Proxy and gateway not on the same host (e.g. the proxy runs in another container/server)? The gateway only trusts `X-Forwarded-For` coming from a loopback socket by default — add the proxy's egress IP to `LAN_GATE_TRUSTED_PROXIES` (see the env var table below).
 
+#### Lucky
+
+[Lucky](https://github.com/gdy666/lucky) is a popular all-in-one public-access toolbox on Chinese routers/NAS boxes (DDNS + ACME certs + reverse proxy; admin UI defaults to `http://<device-ip>:16601`). Prerequisite: set up your domain's DDNS and certificate in Lucky's DDNS and security-certificate modules first (ACME auto-renews). Then:
+
+1. **Web Service → add a web-service rule**: listen on `443`, enable TLS and attach your domain's certificate.
+2. **Add a sub-rule** under it: service type "reverse proxy", frontend address = your domain (e.g. `dsh.example.com`), backend address depending on your layout:
+   - Lucky and DSH on the **same machine**: `127.0.0.1:3088`, zero gateway-side config.
+   - Lucky on a **router/NAS** (the common case): use `<DSH-machine-LAN-IP>:3088`, and set two env vars on the gateway — `LAN_GATE_HOST=0.0.0.0` (so Lucky can reach it; other LAN devices still only ever see the pairing page) and `LAN_GATE_TRUSTED_PROXIES=<Lucky-device-LAN-IP>` (so the gateway trusts its forwarded headers).
+3. **Turn on the sub-rule's 万事大吉 ("all is well") switch** — it auto-adds the common request headers including `X-Forwarded-For`. **On a same-machine deployment this switch is part of the security boundary**: without it, requests arriving through Lucky come from loopback with no forwarded headers and get treated as the local user — exposing the admin surface to the internet. With it on, the problem doesn't exist.
+4. WebSocket passes through automatically, no extra setting; if the conversation stream stalls, upgrade Lucky first.
+
+> Exact toggle names may vary slightly across Lucky versions — the three things that matter: HTTPS cert, reverse proxy to 3088, forwarded headers (万事大吉).
+
+#### Post-setup self-check (do this for any proxy)
+
+From **cellular data** (not your home Wi-Fi), open `https://your-domain/lan-gate/admin` — the correct result is **403**. If you can see the admin page, your proxy is not sending `X-Forwarded-*` headers and the gateway mistook a public request for the local user — **go fix the header config immediately** (nginx: the two `proxy_set_header` lines; Lucky: the 万事大吉 switch). Only start pairing devices after this check passes.
+
 ### 3. Generate a pairing code and pair devices
 
 1. With the proxy in place, open `http://127.0.0.1:3088/lan-gate/admin` in a browser **on the host itself**.

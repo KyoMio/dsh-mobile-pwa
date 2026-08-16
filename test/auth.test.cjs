@@ -69,6 +69,7 @@ test('pairing flow: code -> cookie -> proxied access; kind & revoke via admin', 
     await request(PORT, { method: 'POST', path: '/lan-gate/action', body: { action: 'set-kind', id, kind: 'phone' } })
     const phonePage = await request(PORT, { path: '/', headers: { ...REMOTE_HEADERS, cookie } })
     assert.ok(phonePage.body.includes('data-lan-device="phone"'), 'phone kind injected')
+    assert.ok(!phonePage.body.includes('href="/lan-gate/admin"'), 'paired remote device gets no admin entry chip')
 
     // Revoke kills the cookie immediately.
     await request(PORT, { method: 'POST', path: '/lan-gate/action', body: { action: 'revoke', id } })

@@ -20,10 +20,22 @@
 export const name = 'dsh-mobile-pwa-push'
 export const inject = []
 
-const GATEWAY_PORT = Number(process.env.LAN_GATE_PORT || 3088)
-const EVENTS = String(process.env.DSH_PUSH_EVENTS || 'agent/turn-stopping').split(',').map((s) => s.trim()).filter(Boolean)
-const DEBOUNCE_MS = Number(process.env.DSH_PUSH_DEBOUNCE_MS || 15000)
-const INCLUDE_SUMMARY = process.env.DSH_PUSH_SUMMARY === '1'
+// Shares the gateway's optional config file <DSH_HOME>/lan-gate.config.json
+// (keys: port, pushEvents, pushDebounceMs, pushSummary). Explicit env wins.
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
+function fileConfig() {
+  try {
+    const raw = JSON.parse(readFileSync(join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'lan-gate.config.json'), 'utf8'))
+    return raw !== null && typeof raw === 'object' ? raw : {}
+  } catch { return {} }
+}
+const FILE = fileConfig()
+const GATEWAY_PORT = Number(process.env.LAN_GATE_PORT ?? FILE.port ?? 3088)
+const EVENTS = String(process.env.DSH_PUSH_EVENTS ?? FILE.pushEvents ?? 'agent/turn-stopping').split(',').map((s) => s.trim()).filter(Boolean)
+const DEBOUNCE_MS = Number(process.env.DSH_PUSH_DEBOUNCE_MS ?? FILE.pushDebounceMs ?? 15000)
+const INCLUDE_SUMMARY = process.env.DSH_PUSH_SUMMARY !== undefined ? process.env.DSH_PUSH_SUMMARY === '1' : FILE.pushSummary === true || FILE.pushSummary === 1 || FILE.pushSummary === '1'
 
 // AssistantMessage content may be a plain string or an array of parts.
 function messageText(message) {

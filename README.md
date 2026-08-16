@@ -169,15 +169,25 @@ dsh.example.com {
 | `LAN_GATE_TRUSTED_PROXIES` | 空 | 逗号分隔的 IP 列表。反代和网关不在同一台机器（回环地址）时，把反代的出口 IP 填进来，网关才会信任它带来的 `X-Forwarded-For`/`X-Forwarded-Proto` |
 | `LAN_GATE_VAPID_SUBJECT` | `mailto:admin@localhost` | Web Push 用的 VAPID JWT subject，一般不用改 |
 
-以上配置除了环境变量，也可以直接写在 profile 的 patch 文件里（`~/.dsh/profiles/web/cordis.patch.yml`，Cordis 标准的 config 能力，字段名去掉 `LAN_GATE_` 前缀转小驼峰；显式环境变量优先）：
+除了环境变量，**推荐用配置文件** `~/.dsh/lan-gate.config.json`（网关和推送插件两半共用一份，改完重启 `dsh web` 生效；显式环境变量优先于文件）：
+
+```json
+{
+  "host": "0.0.0.0",
+  "trustedProxies": "192.168.3.2",
+  "rateLimit": 600,
+  "pushSummary": true
+}
+```
+
+字段名 = 环境变量去掉前缀转小驼峰：`port` / `host` / `targetPort` / `rateLimit` / `trustedProxies` / `vapidSubject`，推送半边是 `pushEvents` / `pushDebounceMs` / `pushSummary`。挂载行支持 Cordis config 的 DSH 版本也可以把网关配置写在 insert 行的 `config:` 下（同名小驼峰字段），效果等同。
+
+推送宿主插件（可选）在 profile 的 `~/.dsh/profiles/web/cordis.patch.yml` 里挂载：
 
 ```yaml
 - insert:
-    - id: dsh-mobile-pwa
-      name: dsh-mobile-pwa
-      config:
-        rateLimit: 600
-        trustedProxies: 192.168.31.1
+    - id: dsh-mobile-pwa-push
+      name: dsh-mobile-pwa/dsh-push.mjs
 ```
 
 ---

@@ -167,15 +167,25 @@ The admin page also lets you set a device's kind (phone / desktop / auto layout)
 | `LAN_GATE_TRUSTED_PROXIES` | empty | Comma-separated IP list. When the proxy and gateway aren't on the same host (i.e. not a loopback socket), list the proxy's egress IP here so the gateway trusts the `X-Forwarded-For`/`X-Forwarded-Proto` it sends |
 | `LAN_GATE_VAPID_SUBJECT` | `mailto:admin@localhost` | VAPID JWT subject used for Web Push; rarely needs changing |
 
-Besides env vars, all of the above can live in the profile patch file (`~/.dsh/profiles/web/cordis.patch.yml`, standard Cordis config; drop the `LAN_GATE_` prefix and camelCase the name; explicit env vars win):
+Besides env vars, the **recommended way is the config file** `~/.dsh/lan-gate.config.json` (shared by the gateway and the push plugin; restart `dsh web` after editing; explicit env vars win over the file):
+
+```json
+{
+  "host": "0.0.0.0",
+  "trustedProxies": "192.168.3.2",
+  "rateLimit": 600,
+  "pushSummary": true
+}
+```
+
+Field names = env var names minus the prefix, camelCased: `port` / `host` / `targetPort` / `rateLimit` / `trustedProxies` / `vapidSubject`, plus the push half `pushEvents` / `pushDebounceMs` / `pushSummary`. On DSH versions whose insert rows support Cordis config, the same camelCase fields under the row's `config:` work too.
+
+The optional push host plugin mounts via the profile patch (`~/.dsh/profiles/web/cordis.patch.yml`):
 
 ```yaml
 - insert:
-    - id: dsh-mobile-pwa
-      name: dsh-mobile-pwa
-      config:
-        rateLimit: 600
-        trustedProxies: 192.168.31.1
+    - id: dsh-mobile-pwa-push
+      name: dsh-mobile-pwa/dsh-push.mjs
 ```
 
 ---

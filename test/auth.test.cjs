@@ -128,6 +128,22 @@ test('rate limit hits unpaired clients only', async () => {
   } finally { await stop() }
 })
 
+test('lan-gate.config.json configures the gateway (env absent)', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mobile-pwa-test-'))
+  fs.writeFileSync(path.join(home, 'lan-gate.config.json'), JSON.stringify({ rateLimit: 5 }))
+  const target = await startMockTarget(TARGET_PORT)
+  const gw = startGatewayAt(home, PORT, TARGET_PORT)
+  await gw.ready
+  try {
+    let saw429 = false
+    for (let i = 0; i < 8; i++) {
+      const r = await request(PORT, { path: '/', headers: { 'x-forwarded-for': '203.0.113.88' } })
+      if (r.status === 429) { saw429 = true; break }
+    }
+    assert.ok(saw429, 'file-configured rateLimit=5 enforced on unpaired client')
+  } finally { await stopAll(target, gw.child) }
+})
+
 test('v1 state file is archived, not loaded', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mobile-pwa-test-'))
   fs.writeFileSync(path.join(home, 'lan-gate-state.json'), JSON.stringify({ decisions: { '192.168.1.5': { allow: true, token: 'x' } } }))

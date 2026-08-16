@@ -47,10 +47,22 @@
     })
   }
 
+  // VAPID public key arrives base64url-encoded via the injected bootstrap.
+  function vapidKeyBytes() {
+    var s = String(window.__DSH_PWA__.vapid || '')
+    if (!s) return undefined
+    s = s.replace(/-/g, '+').replace(/_/g, '/')
+    while (s.length % 4) s += '='
+    var raw = atob(s)
+    var a = new Uint8Array(raw.length)
+    for (var i = 0; i < raw.length; i++) a[i] = raw.charCodeAt(i)
+    return a
+  }
+
   function doSubscribe(reg) {
     return reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: window.__DSH_PWA__._vapidKey || undefined
+      applicationServerKey: vapidKeyBytes()
     }).then(function (sub) {
       // Notify the gateway so it can route push to this subscription.
       return fetch('/pwa/push/subscribe', {
@@ -59,11 +71,6 @@
         body: JSON.stringify({ subscription: sub.toJSON() })
       })
     })
-  }
-
-  // Set VAPID when provided by the gateway.
-  window.__DSH_PWA__.setVapidKey = function setVapidKey(ab) {
-    window.__DSH_PWA__._vapidKey = ab
   }
 
   // ---- Notification enable hint (only when a phone, once) -------------

@@ -10,8 +10,8 @@
  */
 'use strict'
 
-const SHELL_CACHE = 'dsh-mobile-pwa-shell-v1'
-const RUNTIME_CACHE = 'dsh-mobile-pwa-runtime-v1'
+const SHELL_CACHE = 'dsh-mobile-pwa-shell-v2'
+const RUNTIME_CACHE = 'dsh-mobile-pwa-runtime-v2'
 
 const SHELL_REGEX = /\.(js|mjs|css|woff2?|ttf|otf|png|webp|svg|jpg|jpeg|gif|ico)(\?|$)/i
 const API_REGEX = /^\/api\//i

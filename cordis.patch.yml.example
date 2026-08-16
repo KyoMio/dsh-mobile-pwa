@@ -9,4 +9,4 @@
       path: file:///ABSOLUTE_PATH/dsh-mobile-pwa/lan-gate.mjs
     - id: dsh-mobile-pwa-push
       name: dsh-mobile-pwa-push
-      path: /ABSOLUTE_PATH/dsh-mobile-pwa/dsh-push.mjs
+      path: file:///ABSOLUTE_PATH/dsh-mobile-pwa/dsh-push.mjs

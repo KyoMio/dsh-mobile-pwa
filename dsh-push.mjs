@@ -1,70 +1,45 @@
 // dsh-mobile-pwa · dsh-push.mjs — agent-done push host plugin (OPTIONAL)
 //
-// Delivers a mobile push notification when a DSH agent finishes a turn, so the
-// phone owner can step away and be nudged when work completes.
+// Sends a mobile push notification (via the gateway's local /pwa/push/send)
+// when a DSH agent finishes a turn. Deliberately minimal and defensive:
 //
-// This is deliberately decoupled from the gateway: the gateway exposes
-//   POST /pwa/push/send  (local-only) -> { title, body, tag?, data? }
-// and the phone subscribes via  POST /pwa/push/subscribe  (see pwa/inject.js).
-// This plugin detects turn-end locally and calls the gateway's local send
-// endpoint, wiring "agent done" -> phone notification.
-//
-// It hooks the DSH conversation/turn lifecycle. The exact hook name depends on
-// the DSH host API; below we use a best-effort subscription to a turn-close
-// event and a conservative fallback: no crash if the hook is unavailable.
-import { fileURLToPath } from 'node:url'
-
+//   - inject: [] — uses only the Cordis event bus (ctx.on), no services, so
+//     0811 strict injection can never block loading.
+//   - Event names are configurable: DSH_PUSH_EVENTS (comma-separated),
+//     default "turn.end". Verify the real name on your DSH version and set
+//     the env accordingly; an unknown name simply never fires.
+//   - Debounced: at most one notification per DSH_PUSH_DEBOUNCE_MS (default
+//     15s), so event bursts produce a single nudge.
+//   - Notification carries NO conversation content — the push service
+//     (FCM/APNs/Mozilla) never sees what you and the agent said.
 export const name = 'dsh-mobile-pwa-push'
-export const inject = ['http', 'conversation'] // adjust to available host services
+export const inject = []
 
 const GATEWAY_PORT = Number(process.env.LAN_GATE_PORT || 3088)
-
-function sendToGateway(payload) {
-  // Best-effort; never raise.
-  return fetch('http://127.0.0.1:' + GATEWAY_PORT + '/pwa/push/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).catch(() => {})
-}
+const EVENTS = String(process.env.DSH_PUSH_EVENTS || 'turn.end').split(',').map((s) => s.trim()).filter(Boolean)
+const DEBOUNCE_MS = Number(process.env.DSH_PUSH_DEBOUNCE_MS || 15000)
 
 export function apply(ctx) {
-  const conv = ctx.get('conversation')
+  let lastSent = 0
 
-  // Attempt to register for turn-close notifications. Hook names vary by DSH
-  // version; this is defensive and logs instead of failing.
-  const candidates = [
-    'message', 'message.create', 'turn.end', 'assistant.done',
-    'session.message', 'onAssistantMessage'
-  ]
-  let wired = false
-  for (const hook of candidates) {
-    if (typeof (conv && conv[hook]) === 'function' || typeof (conv && conv.on) === 'function') {
-      try {
-        ;(conv.on || conv[hook].bind ? conv.on.bind(conv) : conv[hook].bind(conv))(hook, (payload) => {
-          notify(payload)
-        })
-        wired = true
-        break
-      } catch (e) { /* try next */ }
+  const notify = () => {
+    const now = Date.now()
+    if (now - lastSent < DEBOUNCE_MS) return
+    lastSent = now
+    // Best-effort; never raise into the host.
+    fetch(`http://127.0.0.1:${GATEWAY_PORT}/pwa/push/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'DSH 任务完成', body: '智能体已完成当前回合' })
+    }).catch(() => {})
+  }
+
+  for (const event of EVENTS) {
+    try {
+      ctx.on(event, notify)
+    } catch (e) {
+      console.warn(`[dsh-mobile-pwa-push] cannot listen on "${event}": ${String(e && e.message || e)}`)
     }
   }
-  if (!wired && conv && typeof conv.on === 'function') {
-    // Generic catch-all attempt.
-    try {
-      conv.on('message', (payload) => notify(payload))
-    } catch (e) { /* ignore */ }
-  }
-
-  function notify(payload) {
-    const p = payload || {}
-    // Only notify for new assistant content that signals a completed step.
-    const role = (p && (p.role || (p.message && p.message.role))) || ''
-    const content = (p && (p.content || (p.message && p.message.content))) || ''
-    if (role !== 'assistant' && role !== '') return
-    if (!content) return
-    sendToGateway({ title: 'DSH 任务完成', body: '智能体已完成：' + String(content).slice(0, 120) })
-  }
-
-  return () => {}
+  console.log(`[dsh-mobile-pwa-push] listening for: ${EVENTS.join(', ')} (set DSH_PUSH_EVENTS to adjust)`)
 }

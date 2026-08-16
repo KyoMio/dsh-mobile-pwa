@@ -1,14 +1,13 @@
-# dsh-mobile-pwa · 让 DeepSeek Harness 在手机上变成真 PWA
-
-> 把 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）变成**手机上的完整 PWA**：安全远程访问你的自建 DSH + 一键「添加到主屏」成独立 App + 离线可用 + 触屏手势 + 任务完成推送。
+<h1 align="center">dsh-mobile-pwa</h1>
+<p align="center">把 DeepSeek Harness 变成能安全接到公网的手机 PWA：配对码认证 + 令牌身份 + 真 Web Push，你自己的反代终结 TLS。</p>
 
 基于 MIT 的 [`dsh-mobile-gate`](https://github.com/Bernardxu123/dsh-mobile-gate)（安全网关基座）做差异化增强。
 
 [![npm version](https://img.shields.io/npm/v/dsh-mobile-pwa)](https://www.npmjs.com/package/dsh-mobile-pwa)
-[![license](https://img.shields.io/github/license/zylzyqzz/dsh-mobile-pwa)](https://github.com/zylzyqzz/dsh-mobile-pwa/blob/main/LICENSE)
+[![license](https://img.shields.io/github/license/KyoMio/dsh-mobile-pwa)](https://github.com/KyoMio/dsh-mobile-pwa/blob/main/LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/dsh--plugin-ready-4c8dff)](https://github.com/topics/dsh-plugin)
 
-📍 生态定位：社区现有移动端方案都停留在「窄屏 CSS 微调」，本项目做的是**移动端 PWA 一站式完整方案**。
+📍 生态定位：社区现有移动端方案都停留在「窄屏 CSS 微调」，本项目做的是**移动端 PWA 一站式完整方案**——从公网身份认证到装到主屏、离线、推送，全流程打通。
 
 ---
 
@@ -16,87 +15,204 @@
 
 | 模块 | 说明 |
 | --- | --- |
-| 📡 **安全远程访问** | 独立子进程网关，首次访问**本机审批** + **每设备一次性令牌** + **每 IP 限流**。DSH 主服务仍只监听 `127.0.0.1`，`/api` 信任栅栏不受影响 |
-| 📱 **真 PWA** | `manifest.json` + `service worker`：手机浏览器「**添加到主屏**」后全屏独立窗口运行，带图标/启动屏/主题色 |
+| 🔑 **公网身份** | 网关只监听 `127.0.0.1`，放在你自己的反代后面；新设备用配对码换取长期设备令牌（Cookie `lg_device`），身份跟着令牌走，与来源 IP 完全无关 |
+| 📱 **真 PWA** | `manifest.json` + service worker：反代带来 HTTPS 后，手机浏览器「添加到主屏」真正生效，全屏独立窗口运行，带图标/启动屏/主题色 |
 | 🧩 **可安装** | 主屏图标、`standalone` 显示、`apple-touch-icon`、maskable 图标 |
-| 🌐 **离线可用** | service worker：静态壳缓存优先、API 网络优先、导航离线回退页 |
-| 👆 **触屏手势** | 下拉刷新、边缘右滑返回、**捏合缩放字体**（可重置） |
-| 🔔 **任务完成推送** | agent 干完活 → Web Push 通知，切到别的 App 也能收到（可选手动开启） |
+| 🌐 **离线可用** | service worker：静态壳缓存优先、API 网络优先，断网时给离线回退页 |
+| 👆 **触屏手势** | 下拉刷新、边缘右滑返回、捏合缩放字体（可重置） |
+| 🔔 **任务完成推送** | 真 Web Push（VAPID 签名 + aes128gcm 加密），agent 干完活推送到手机，通知里不带对话内容 |
 | 📐 **触屏布局** | 44px 触摸目标、safe-area 适配、全屏弹窗、紧凑排版、代码横向滚动——桌面零影响 |
-| 🔒 **桌面不受影响** | 所有规则都以 `html[data-lan-device="phone"]` 或以排除 `data-lan-device="desktop"` 的 `@media` 为根 |
+| 🔒 **桌面不受影响** | 所有规则都以 `html[data-lan-device="phone"]` 或排除 `data-lan-device="desktop"` 的 `@media` 为根 |
+| 🛡️ **管理面本机独占** | 生成配对码、管理设备、触发推送——这些接口只认本机直连，经反代进来的请求一律 403 |
 
 ---
 
 ## 🏗️ 架构
 
 ```
-手机 ──> 网关 (独立 Node 子进程 · 0.0.0.0:3088)
-           ├─ 未批准 -> 「等待本机批准」页面（轮询 /lan-gate/admin）
-           ├─ 已批准+令牌Cookie -> 反向代理到 DSH Web UI (127.0.0.1:3080)
-           │      └─ HTML 注入：manifest link + PWA bootstrap + 触屏CSS + randomUUID polyfill
-           ├─ /pwa/* -> 直接提供 manifest / sw.js / app.css / 图标 / offline.html
-           ├─ /pwa/push/* -> 订阅 / 发送 agent 完成通知
-           └─ 超限 -> 429 限流页
-电脑 127.0.0.1:3088/lan-gate/admin  -> 批准/拒绝/撤销设备、选择访问方式(手机/电脑/自动)
+公网设备(手机/电脑) --HTTPS--> 你自己的反代(nginx/Caddy，负责 TLS 终结)
+                                       │  HTTP + X-Forwarded-For/Proto
+                                       ▼
+                     网关(独立 Node 子进程 · 默认只监听 127.0.0.1:3088)
+                                       │
+        ┌──────────────────────────────┼────────────────────────────────┐
+        │                              │                                 │
+   未配对设备                    已配对设备(带 lg_device 令牌 Cookie)         本机直连(无 X-Forwarded-* 头)
+   → 任意路径都跳配对页             → 反代到 DSH Web UI(127.0.0.1:3080)         → 管理页/管理 API/推送触发
+     提交配对码换令牌                 HTML 注入：manifest + PWA 引导 +             /lan-gate/admin /status
+                                     触屏 CSS + randomUUID polyfill            /action /pair /pwa/push/send
 ```
 
-- 网关是**独立子进程**，与 DSH 主进程隔离：挂掉不影响主服务，插件停止时自动终止。
-- DSH CLI 官方禁止 `--host 0.0.0.0`（`/api` 无认证层），所以由网关担当地被批准设备与 DSH 之间的唯一通道。
+- 网关是独立子进程，与 DSH 主进程隔离：挂掉不影响主服务，插件停止时自动终止。
+- DSH 主服务本身仍然只监听 `127.0.0.1`，网关不改它的任何配置，也不碰它 `/api` 的信任栅栏。
+- 唯一保留的「按 IP 信任」：回环 socket 且不带任何 `X-Forwarded-*` 头的请求，判定为坐在这台机器前面的本机用户——这是管理面的唯一入口。经反代进来的请求一定带转发头，天然进不去。
 
 ---
 
-## 🚀 快速开始（在你自己的 DSH 服务器上）
+## 🚀 快速开始
 
-### 方式零：npm 一键安装（推荐，已发布）
-
-从 npm 直接安装，`dsh plugin add` 走预构建，**无需 `allowBuilds` 授权**：
+### 1. 安装插件
 
 ```bash
-npm add dsh-mobile-pwa   # 或: npm install dsh-mobile-pwa@0.1.0
-dsh plugin --profile web add dsh-mobile-pwa
+dsh plugin --profile web add github:KyoMio/dsh-mobile-pwa#rework/public-auth-push
 ```
 
-> 已声明 `dsh.bundle` manifest，安装后自动激活配置层，无需手写 patch。
-> 包：https://www.npmjs.com/package/dsh-mobile-pwa
+已声明 `dsh.bundle` manifest，装完重启一下 `dsh web` 让新插件生效。
 
-### 方式一：从 GitHub 本地安装
+本地目录安装（自己 clone 下来改代码时用）：
 
 ```bash
-git clone https://github.com/zylzyqzz/dsh-mobile-pwa.git
+git clone https://github.com/KyoMio/dsh-mobile-pwa.git
 cd dsh-mobile-pwa
+git checkout rework/public-auth-push
 dsh plugin --profile web add ./dsh-mobile-pwa
 ```
 
-### 方式二 / 方式三：静态挂载 / 动态插件
+也可以走静态挂载（参考 [`cordis.patch.yml.example`](cordis.patch.yml.example)，把绝对路径替换进你的 profile patch）或动态插件（见 `lan-gate.mjs` 注释），适合不想走 `dsh plugin add` 安装流程的场景。
 
-- 静态挂载：参考 [`cordis.patch.yml.example`](cordis.patch.yml.example)，把绝对路径替换进你的 profile patch。
-- 动态插件：见 `lan-gate.mjs` 的注释（Cordis 动态插件包）。
+### 2. 配你自己的反代
 
-### 配置（环境变量）
+网关默认只监听 `127.0.0.1:3088`，不会自己裸奔到公网。想从手机或别的电脑访问，你需要在能连到它的机器上跑一个反代来终结 HTTPS，再把流量转给网关。下面两份配置可以直接抄。
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `LAN_GATE_PORT` | `3088` | 网关监听端口 |
-| `LAN_GATE_HOST` | `0.0.0.0` | 网关监听地址 |
-| `LAN_GATE_TARGET_PORT` | `3080` | 本机 DSH Web UI 端口 |
-| `LAN_GATE_RATE_LIMIT` | `120` | 每 IP 每分钟请求上限 |
-| `LAN_GATE_VAPID_PUBLICKEY` | 空 | Web Push VAPID 公钥（用于任务完成通知） |
+#### nginx
 
-### 使用流程
+```nginx
+# http {} 块里加一次即可，多个 server 复用
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
 
-1. **服务端**：启动 DSH + 本插件，看到 `[lan-gate] listening on 0.0.0.0:3088 -> 127.0.0.1:3080 (pwa=on)`。
-2. **手机**：浏览器打开 `http://<你的IP>:3088` → 出现「等待本机批准」。
-3. **电脑**：打开 `http://127.0.0.1:3088/lan-gate/admin` → 批准该设备并选「手机」。
-4. **手机**：下拉刷新 → 进入 DSH Web UI（已注入 PWA）。
-5. **添加到主屏**：浏览器菜单 → 「添加到主屏」→ 变成独立 App。
-6. **（可选）任务完成通知**：注入页会提示开启通知。
+server {
+    listen 80;
+    server_name dsh.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name dsh.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/dsh.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dsh.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3088;
+        proxy_http_version 1.1;
+
+        # WebSocket 升级——DSH Web UI 需要
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        # 网关靠这两个头识别真实客户端和协议，缺了它们配对/推送都会出问题
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 长连接/流式响应建议关掉缓冲，避免响应被攒着不发
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+#### Caddy
+
+Caddy 默认自带 HTTPS 证书签发、WebSocket 转发和转发头，一行 `reverse_proxy` 就够：
+
+```
+dsh.example.com {
+    reverse_proxy 127.0.0.1:3088
+}
+```
+
+> 反代和网关不在同一台机器上（比如反代跑在另一个容器/服务器）？网关默认只信任回环地址发来的 `X-Forwarded-For`，这种情况要把反代的出口 IP 加进 `LAN_GATE_TRUSTED_PROXIES`，见下面环境变量表。
+
+### 3. 生成配对码、配对设备
+
+1. 反代配好后，在**这台机器本机**的浏览器打开 `http://127.0.0.1:3088/lan-gate/admin`。
+2. 点「生成配对码」，得到一个 8 位码，10 分钟内有效，只能用一次。
+3. 手机或另一台电脑，浏览器打开你反代的 HTTPS 域名，会看到配对页，输入配对码（可选填设备名）。
+4. 配对成功后自动进入 DSH Web UI（已注入 PWA），身份保存在长期 Cookie 里，换 Wi-Fi/换 IP 都不会掉线。
+5. 手机上通过浏览器菜单「添加到主屏幕」，就能像原生 App 一样独立打开。
+6. 页面会提示开启「任务完成推送」，同意通知权限后，agent 干完活即使切到别的 App 也能收到系统通知。
+
+在管理页还可以：把设备类型设为手机/电脑/自动排版、给设备改名、单独吊销某台设备或一键全部吊销。
 
 ---
 
-## ⚙️ 本机安装测试
+## ⚙️ 环境变量
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `LAN_GATE_PORT` | `3088` | 网关监听端口；被占用会自动往上 +1 重试（最多 +20） |
+| `LAN_GATE_HOST` | `127.0.0.1` | 网关监听地址。留默认值 + 反代是推荐做法；只有你清楚自己在干什么时才改成别的 |
+| `LAN_GATE_TARGET_PORT` | `3080` | 本机 DSH Web UI 端口，网关反代到这里 |
+| `LAN_GATE_RATE_LIMIT` | `120` | 按解析出的真实客户端 IP 算的每分钟请求上限，超了返回 429 |
+| `LAN_GATE_TRUSTED_PROXIES` | 空 | 逗号分隔的 IP 列表。反代和网关不在同一台机器（回环地址）时，把反代的出口 IP 填进来，网关才会信任它带来的 `X-Forwarded-For`/`X-Forwarded-Proto` |
+| `LAN_GATE_VAPID_SUBJECT` | `mailto:admin@localhost` | Web Push 用的 VAPID JWT subject，一般不用改 |
+
+---
+
+## 🔌 管理 API
+
+以下接口全部**仅限本机直连**：请求的 socket 必须是回环地址、且不带任何 `X-Forwarded-*` 头。只要请求经过反代（一定带转发头），一律返回 403——公网碰不到这些接口。
+
+| 接口 | 方法 | 作用 | 参数 |
+| --- | --- | --- | --- |
+| `/lan-gate/pair` | POST | 生成一个新的一次性配对码（10 分钟有效） | 无 |
+| `/lan-gate/status` | GET | 查看运行状态、当前配对码、已配对设备列表 | 无 |
+| `/lan-gate/action` | POST | 管理设备 | `action`: `set-kind` / `rename` / `revoke` / `revoke-all`；`id`: 设备 id（`revoke-all` 不需要）；`set-kind` 还需要 `kind`（`phone`/`desktop`/`auto`）；`rename` 还需要 `name` |
+| `/pwa/push/send` | POST | 给所有已订阅设备发一条推送 | `title`、`body`（都是纯文字，不含对话内容） |
+
+配对入口 `/lan-gate/pair/claim`（POST）是唯一对外开放的例外——它就是设备输入配对码换令牌的地方，靠码本身（一次性、10 分钟过期）和失败锁定（连续 5 次错码锁该 IP 15 分钟）来防护，不需要本机身份。
+
+---
+
+## 🔔 推送说明
+
+- VAPID 密钥对首次启动时自动生成，存在 `~/.dsh/lan-gate-state.json` 里（目录可用 `DSH_HOME` 环境变量改），公钥通过注入脚本下发给页面。
+- 订阅接口 `/pwa/push/subscribe` 要求带有效的设备令牌 Cookie（也就是必须先配对成功），每台设备最多一条订阅，全局最多 20 条，防止陌生人往你服务器塞订阅、也防止借这个接口对外发请求。
+- 推送内容只有标题和一句简短正文（比如「DSH 任务完成」），**不携带任何对话内容**——走的是标准 Web Push（VAPID 签名 + aes128gcm 加密），只有推送服务商和你的浏览器能看到密文。
+- 设备被吊销时，它的推送订阅一并删除；推送目标返回 404/410（订阅已失效）时网关会自动清掉这条订阅。
+- 手机浏览器要求页面必须是 HTTPS 才会注册 Service Worker，所以推送和离线能力都依赖第 2 步配好的反代——反代没配好之前，这两项在真机上都不会生效。
+- 「agent 干完活自动推送」由可选宿主插件 `dsh-push.mjs` 负责：它监听 DSH 事件总线并调用本机 `/pwa/push/send`。事件名通过 `DSH_PUSH_EVENTS`（逗号分隔）配置，**默认值 `turn.end` 是猜测值，请对照你实际运行的 DSH 版本核对**；`DSH_PUSH_DEBOUNCE_MS`（默认 15000）控制两条通知的最小间隔。不装它也可以自己在任何脚本里 `curl -X POST http://127.0.0.1:3088/pwa/push/send -H 'Content-Type: application/json' -d '{"title":"DSH 任务完成"}'` 手动触发。
+
+---
+
+## 🛡️ 安全边界
+
+**防住了什么：**
+- 配对码暴力破解——码本身 10 分钟一次性，连续 5 次错码会把那个来源 IP 锁 15 分钟。
+- 令牌可以随时吊销——手机丢了、借给别人用完了，管理页点一下就失效，立即生效。
+- 请求量——按解析出的真实客户端 IP 限流，默认每分钟 120 次，超了就 429。
+- 管理面只有本机能碰——生成配对码、管理设备、触发推送，这些接口只认本机直连，经反代来的请求（一定带转发头）一律 403。
+
+**没防住什么，需要你自己注意：**
+- 反代配置错了——比如不小心把 `127.0.0.1:3088/lan-gate/admin` 也挂到公网域名下，或者 `X-Forwarded-Proto` 设错导致网关判断错客户端协议，这些是配置问题，网关本身防不住。
+- 令牌被别人拿到——这是单用户工具，令牌等于访问权限，没有更细的权限分级；谁拿到令牌谁就能用，怀疑泄露就去管理页吊销重配。
+- DSH 自身的能力边界——网关只负责把 HTTPS 流量安全地转发给 DSH，不会也不能给 DSH 本身加它没有的安全措施（比如 `/api` 自己的信任栅栏是 DSH 那边的事）。
+- 状态文件 `~/.dsh/lan-gate-state.json` 明文存着 VAPID 私钥和所有设备的令牌——这个文件本身就等于全部访问权限，注意宿主机上它的文件权限，别把 `~/.dsh` 目录同步进公共网盘或备份到不受信的地方。
+
+---
+
+## ❓ 常见问题
+
+**从旧版本升级要做什么？**
+旧版是按来源 IP 审批的，这套逻辑在新的令牌模型下没有意义。网关用新版本第一次启动时，会检测到旧的状态文件并直接把它改名归档成 `lan-gate-state.json.v1.bak`（不做数据迁移）。所有设备都需要重新走一遍配对流程。
+
+**配对码提示过期或不对怎么办？**
+配对码 10 分钟有效、用一次就失效，过期或用过了要回到本机管理页重新点「生成配对码」。如果连续输错 5 次，那个来源 IP 会被锁 15 分钟，等一等或者换个网络再试。
+
+**推送收不到怎么排查？**
+按顺序查：手机是不是用 HTTPS 域名访问的（HTTP 下浏览器根本不会注册 Service Worker，推送无从谈起）？浏览器/PWA 有没有被系统或用户拒绝通知权限？可以到本机管理页对应的状态接口（`/lan-gate/status`）看这台设备名字后面有没有 🔔 标记，确认订阅到底成功没有。
+
+---
+
+## ⚙️ 本机测试
 
 ```bash
-npm test   # 起 mock 上游，验证 /pwa 资产、HTML 注入、状态上报
+npm test   # 起 mock 上游，跑 gateway/auth/push 三组测试：反代与注入、配对流程、推送发送
 ```
 
 ---
@@ -106,8 +222,8 @@ npm test   # 起 mock 上游，验证 /pwa 资产、HTML 注入、状态上报
 | 路径 | 作用 |
 | --- | --- |
 | `lan-gate.mjs` | Cordis 插件入口：spawn 网关子进程 + 生命周期管理 |
-| `dsh-push.mjs` | （可选）agent 完成推送宿主插件，调网关 `/pwa/push/send` |
-| `lib/lan-gate-server.cjs` | 网关本体：零依赖单文件（HTTP 代理 + 审批 + 令牌 + 限流 + PWA 注入） |
+| `dsh-push.mjs` | （可选）agent 完成推送宿主插件，调网关本机 `/pwa/push/send` |
+| `lib/lan-gate-server.cjs` | 网关本体：单文件 CommonJS（Node stdlib + `web-push` 一个运行时依赖），HTTP/WebSocket 反代 + 配对/令牌 + 限流 + PWA 注入 + Web Push |
 | `pwa/manifest.json` | PWA 安装清单 |
 | `pwa/sw.js` | service worker（离线缓存 + 推送通知） |
 | `pwa/inject.js` | 注入页引导：注册 SW + 加载手势 + 通知订阅 |
@@ -115,8 +231,12 @@ npm test   # 起 mock 上游，验证 /pwa 资产、HTML 注入、状态上报
 | `pwa/app.css` | 移动触屏布局（`data-lan-device` 前缀，桌面零影响） |
 | `pwa/offline.html` | 离线回退页 |
 | `pwa/icons/` | SVG 源 + 192/512 PNG + maskable 图标 |
-| `cordis.patch.yml` / `.example` | 插件 bundle 挂载层 |
-| `test/gateway.test.cjs` | 冒烟测试 |
+| `cordis.patch.yml` / `.example` | 插件 bundle 挂载层 / 静态挂载示例 |
+| `docs/spec-public-auth-push.md`、`docs/plan-public-auth-push.md` | 这次公网开放改造的设计文档与实施计划 |
+| `test/gateway.test.cjs` | 网关启停、`/pwa` 资源、HTML 注入的冒烟测试 |
+| `test/auth.test.cjs` | 配对流程、令牌、错码锁定、v1 状态归档、重启后设备存活 |
+| `test/push.test.cjs` | 推送订阅与发送、VAPID 加密、失效订阅自动清理 |
+| `test/util.cjs` | 测试共用的启动/请求/配对辅助函数（本身不是测试用例） |
 
 ---
 
@@ -126,6 +246,7 @@ npm test   # 起 mock 上游，验证 /pwa 资产、HTML 注入、状态上报
 - **移动 CSS 前缀**：新规则一律挂 `html[data-lan-device="phone"]` 或排除 `desktop` 的 `@media(max-width:820px)`，**桌面必须永不受影响**。
 - **稳定选择器**：用 `[data-slot=...]` / ARIA 而非 hash 类名，避免前端构建后失效。
 - **注入页的单引号坑**：`lib/lan-gate-server.cjs` 里的注入脚本字符串，历史上有「双引号套双引号」bug，注意字面量转义。
+- **本机直连判定**：新增/修改路由前先看 `isLocalDirect`——它是管理面 403 防护的唯一依据，别绕过它。
 
 ---
 
@@ -138,7 +259,7 @@ npm test   # 起 mock 上游，验证 /pwa 资产、HTML 注入、状态上报
 
 ## ⚠️ 安全须知
 
-安装插件 = 在你的机器上运行第三方代码，权限与你本人相同。收录/发布不等于安全审查。请：**只在你自己的服务器上跑、别放密钥到不熟悉的环境、定期审计 `lib/lan-gate-server.cjs` 的变更**。远程访问务必走审批 + 令牌，别把网关端口裸奔到公网。
+安装插件 = 在你的机器上运行第三方代码，权限与你本人相同。收录/发布不等于安全审查。网关默认只监听 `127.0.0.1`，不会自己对公网裸奔——所有对外访问都必须经过你自己配置、终结 TLS 的反代。请：**只在你自己的服务器上跑、别把状态文件同步到不受信的地方、定期审计 `lib/lan-gate-server.cjs` 的变更**。
 
 ## License
 

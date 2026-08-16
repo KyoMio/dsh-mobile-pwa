@@ -1,8 +1,11 @@
-# dsh-mobile-pwa · A real PWA for DeepSeek Harness on your phone
-
-> Turn [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) into a **complete mobile PWA**: secure remote access to your own DSH server + install-to-homescreen standalone app + offline capability + touch gestures + agent-done push notifications.
+<h1 align="center">dsh-mobile-pwa</h1>
+<p align="center">Turn DeepSeek Harness into a mobile PWA you can safely reach from the public internet: pairing-code auth + token identity + real Web Push, with your own reverse proxy terminating TLS.</p>
 
 Built on the MIT [dsh-mobile-gate](https://github.com/Bernardxu123/dsh-mobile-gate) secure-gateway base, with PWA differentiation.
+
+[![npm version](https://img.shields.io/npm/v/dsh-mobile-pwa)](https://www.npmjs.com/package/dsh-mobile-pwa)
+[![license](https://img.shields.io/github/license/KyoMio/dsh-mobile-pwa)](https://github.com/KyoMio/dsh-mobile-pwa/blob/main/LICENSE)
+[![dsh-plugin](https://img.shields.io/badge/dsh--plugin-ready-4c8dff)](https://github.com/topics/dsh-plugin)
 
 ---
 
@@ -10,91 +13,236 @@ Built on the MIT [dsh-mobile-gate](https://github.com/Bernardxu123/dsh-mobile-ga
 
 | Module | What |
 | --- | --- |
-| 📡 **Secure remote access** | Isolated child-process gateway. First-visit approval on the host, one-time token per device, per-IP rate limiting. DSH stays `127.0.0.1`-only; the `/api` trust fence is untouched |
-| 📱 **Real PWA** | `manifest.json` + service worker → install to homescreen as a standalone full-screen app with icon, splash, theme-color, maskable assets |
-| 🌐 **Offline** | SW: shell assets cache-first, API network-first with cache fallback, offline fallback page |
+| 🔑 **Public-internet identity** | The gateway listens on `127.0.0.1` only, sitting behind your own reverse proxy. New devices trade a pairing code for a long-lived device token (cookie `lg_device`) — identity follows the token, not the source IP |
+| 📱 **Real PWA** | `manifest.json` + service worker: once the proxy provides HTTPS, "Add to Home Screen" actually works — standalone full-screen app with icon, splash, theme-color, maskable assets |
+| 🌐 **Offline** | SW: shell assets cache-first, API network-first, offline fallback page when the network drops |
 | 👆 **Touch gestures** | Pull-to-refresh, edge-swipe back, pinch-to-resize font (resettable) |
-| 🔔 **Agent-done push** | Web Push when the agent finishes a turn, even when the phone shows another app (opt-in) |
+| 🔔 **Agent-done push** | Real Web Push (VAPID-signed, aes128gcm-encrypted). Notified when the agent finishes, even from another app — the notification never carries conversation content |
 | 📐 **Touch layout** | 44px targets, safe-area, full-screen dialogs, compact type, horizontal-scrolling code — **desktop never affected** |
 | 🔒 **Desktop unaffected** | Every rule is rooted at `html[data-lan-device="phone"]` or an `@media(max-width:820px)` that excludes `data-lan-device="desktop"` |
+| 🛡️ **Admin surface is local-only** | Generating pairing codes, managing devices, triggering pushes — these endpoints only accept direct local connections; anything arriving through the proxy gets 403 |
 
 ---
 
 ## Architecture
 
 ```
-Phone ──> gateway (isolated Node child · 0.0.0.0:3088)
-            ├─ not approved       -> "waiting host approval" page (polls /lan-gate/admin)
-            ├─ approved + token   -> reverse proxy to DSH Web UI (127.0.0.1:3080)
-            │        └─ HTML injected: manifest link + PWA bootstrap + touch CSS + randomUUID polyfill
-            ├─ /pwa/*             -> serves manifest / sw.js / app.css / icons / offline.html
-            ├─ /pwa/push/*        -> subscribe & send agent-done notifications
-            └─ over rate          -> 429 page
-Host 127.0.0.1:3088/lan-gate/admin -> approve / deny / revoke devices, pick access mode (phone/desktop/auto)
+Public device (phone/laptop) --HTTPS--> your own reverse proxy (nginx/Caddy, terminates TLS)
+                                                │  HTTP + X-Forwarded-For/Proto
+                                                ▼
+                            gateway (isolated Node child · listens on 127.0.0.1:3088 by default)
+                                                │
+              ┌──────────────────────────────────┼───────────────────────────────────┐
+              │                                  │                                    │
+       unpaired device                   paired device (has lg_device token cookie)    direct-local request (no X-Forwarded-*)
+       → any path redirects to               → reverse-proxied to DSH Web UI               → admin page / admin API / push trigger
+         the pairing page,                     (127.0.0.1:3080); HTML injected:                /lan-gate/admin /status
+         POST code -> token                    manifest + PWA bootstrap +                      /action /pair /pwa/push/send
+                                                touch CSS + randomUUID polyfill
 ```
+
+- The gateway is an isolated child process: if it crashes, DSH's main service is unaffected; it's torn down automatically when the plugin stops.
+- DSH's own web server still binds `127.0.0.1` only. The gateway never touches DSH's config or its `/api` trust fence.
+- The one IP-based trust left: a loopback socket carrying **no** `X-Forwarded-*` headers is treated as the local user sitting at this machine — the only path into the admin surface. Requests that came through the proxy always carry forwarded headers, so they can never look local.
 
 ---
 
-## Quick start (on your own DSH server)
+## Quick start
 
-### Option 0 — npm one-liner (recommended, published)
-
-Install straight from npm — prebuilt, **no `allowBuilds` approval needed**:
+### 1. Install the plugin
 
 ```bash
-npm add dsh-mobile-pwa     # or: npm install dsh-mobile-pwa@0.1.0
-dsh plugin --profile web add dsh-mobile-pwa
+dsh plugin --profile web add github:KyoMio/dsh-mobile-pwa#rework/public-auth-push
 ```
 
-Package: https://www.npmjs.com/package/dsh-mobile-pwa
+The package declares a `dsh.bundle` manifest; restart `dsh web` after installing.
 
-### Option 1 — from GitHub
+Local-directory install (for hacking on the code yourself):
 
 ```bash
-git clone https://github.com/zylzyqzz/dsh-mobile-pwa.git
+git clone https://github.com/KyoMio/dsh-mobile-pwa.git
 cd dsh-mobile-pwa
+git checkout rework/public-auth-push
 dsh plugin --profile web add ./dsh-mobile-pwa
 ```
 
-### Option 2 / 3 — static mount / dynamic plugin
+Static mount is also available (see [`cordis.patch.yml.example`](cordis.patch.yml.example) — swap in the absolute checkout path) or dynamic-plugin mount (see the header comment in `lan-gate.mjs`), for setups that skip `dsh plugin add`.
 
-Or static-mount via [`cordis.patch.yml.example`](cordis.patch.yml.example).
-Dynamic plugin: see the `lan-gate.mjs` header comments.
+### 2. Put your own reverse proxy in front
 
-### Env config
+The gateway listens on `127.0.0.1:3088` only by default — it will not expose itself to the public internet on its own. To reach it from a phone or another computer, run a reverse proxy somewhere that can see the gateway, have it terminate HTTPS, and forward to the gateway. Both configs below are meant to be copy-pasted as-is.
 
-`LAN_GATE_PORT` (3088) · `LAN_GATE_HOST` (0.0.0.0) · `LAN_GATE_TARGET_PORT` (3080) · `LAN_GATE_RATE_LIMIT` (120) · `LAN_GATE_VAPID_PUBLICKEY` (empty, for push).
+#### nginx
 
-### Flow
+```nginx
+# Put this once inside the http {} block; every server{} below can reuse it
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
 
-1. Start DSH + this plugin → sees `[lan-gate] listening on 0.0.0.0:3088 -> 127.0.0.1:3080 (pwa=on)`.
-2. Phone → open `http://<your-ip>:3088` → "waiting approval".
-3. On the host → open `http://127.0.0.1:3088/lan-gate/admin` → approve the device, pick **phone**.
-4. Phone → refresh → DSH UI, PWA-injected.
-5. Browser menu → **Add to Home Screen** → standalone app.
-6. (Optional) enable agent-done notifications from the injected hint.
+server {
+    listen 80;
+    server_name dsh.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name dsh.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/dsh.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dsh.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3088;
+        proxy_http_version 1.1;
+
+        # WebSocket upgrade — required by the DSH Web UI
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        # The gateway relies on these two headers to identify the real client
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Recommended for long-lived/streaming responses so nothing gets buffered away
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+#### Caddy
+
+Caddy handles HTTPS certificate issuance, WebSocket forwarding, and forwarded headers automatically — one `reverse_proxy` line is enough:
+
+```
+dsh.example.com {
+    reverse_proxy 127.0.0.1:3088
+}
+```
+
+> Proxy and gateway not on the same host (e.g. the proxy runs in another container/server)? The gateway only trusts `X-Forwarded-For` coming from a loopback socket by default — add the proxy's egress IP to `LAN_GATE_TRUSTED_PROXIES` (see the env var table below).
+
+### 3. Generate a pairing code and pair devices
+
+1. With the proxy in place, open `http://127.0.0.1:3088/lan-gate/admin` in a browser **on the host itself**.
+2. Click "generate pairing code" to get an 8-character code, valid for 10 minutes, single-use.
+3. On the phone or another computer, open your proxy's HTTPS domain in a browser — you'll land on the pairing page. Enter the code (device name is optional).
+4. On success you're dropped straight into the DSH Web UI (PWA-injected); identity is stored in a long-lived cookie, so switching Wi-Fi/IP never logs you out.
+5. On the phone, use the browser menu's "Add to Home Screen" to get a standalone app.
+6. The page will prompt you to enable "agent-done push" — grant notification permission and you'll get a system notification when the agent finishes, even from another app.
+
+The admin page also lets you set a device's kind (phone / desktop / auto layout), rename it, and revoke a single device or all of them at once.
+
+---
+
+## Environment variables
+
+| Variable | Default | What |
+| --- | --- | --- |
+| `LAN_GATE_PORT` | `3088` | Gateway listen port; on `EADDRINUSE` it retries up the port range (up to +20) |
+| `LAN_GATE_HOST` | `127.0.0.1` | Gateway listen address. Leaving the default in place plus a reverse proxy is the recommended setup — only change this if you know exactly what you're doing |
+| `LAN_GATE_TARGET_PORT` | `3080` | Local DSH Web UI port the gateway reverse-proxies to |
+| `LAN_GATE_RATE_LIMIT` | `120` | Requests per minute allowed per resolved real client IP before returning 429 |
+| `LAN_GATE_TRUSTED_PROXIES` | empty | Comma-separated IP list. When the proxy and gateway aren't on the same host (i.e. not a loopback socket), list the proxy's egress IP here so the gateway trusts the `X-Forwarded-For`/`X-Forwarded-Proto` it sends |
+| `LAN_GATE_VAPID_SUBJECT` | `mailto:admin@localhost` | VAPID JWT subject used for Web Push; rarely needs changing |
+
+---
+
+## Admin API
+
+All of the following endpoints are **local-direct-connection only**: the request's socket must be a loopback address and carry no `X-Forwarded-*` headers at all. Anything that came through the proxy (which always carries forwarded headers) gets 403 — the public internet can never reach these.
+
+| Endpoint | Method | What | Params |
+| --- | --- | --- | --- |
+| `/lan-gate/pair` | POST | Generate a new one-time pairing code (valid 10 minutes) | none |
+| `/lan-gate/status` | GET | Read running state, the current pairing code, the list of paired devices | none |
+| `/lan-gate/action` | POST | Manage a device | `action`: `set-kind` / `rename` / `revoke` / `revoke-all`; `id`: device id (not needed for `revoke-all`); `set-kind` also needs `kind` (`phone`/`desktop`/`auto`); `rename` also needs `name` |
+| `/pwa/push/send` | POST | Send one push to every subscribed device | `title`, `body` (plain text, no conversation content) |
+
+The exception is `/lan-gate/pair/claim` (POST) — the one endpoint reachable from anywhere, since it's how a device redeems the pairing code for a token in the first place. It's protected by the code itself (single-use, 10-minute TTL) and a failure lockout (5 wrong codes locks that IP for 15 minutes), not by local identity.
+
+---
+
+## Push notes
+
+- The VAPID key pair is generated automatically on first boot and persisted to `~/.dsh/lan-gate-state.json` (override the directory with `DSH_HOME`); the public key is delivered to the page via the injected bootstrap script.
+- `/pwa/push/subscribe` requires a valid device token cookie (i.e. the device must already be paired); each device gets at most one subscription, capped at 20 total, to keep strangers from spamming your server with subscriptions or using it to fire requests elsewhere.
+- Push payloads carry only a title and a short body line (e.g. "DSH task complete") — **never any conversation content**. Delivery is standard Web Push (VAPID-signed, aes128gcm-encrypted); only the push service and your browser ever see the plaintext.
+- Revoking a device deletes its push subscription too; a 404/410 from the push endpoint (expired subscription) gets it auto-cleaned on the next send.
+- Mobile browsers require HTTPS before they'll register a service worker at all, so both push and offline support depend on step 2's reverse proxy — neither works on a real device until HTTPS is in place.
+- The "notify when the agent finishes" wiring lives in the optional host plugin `dsh-push.mjs`: it listens on the DSH event bus and calls the local `/pwa/push/send`. Event names come from `DSH_PUSH_EVENTS` (comma-separated); **the default `turn.end` is a guess — verify it against the DSH version you actually run**. `DSH_PUSH_DEBOUNCE_MS` (default 15000) sets the minimum gap between notifications. You can also skip the plugin entirely and trigger pushes yourself: `curl -X POST http://127.0.0.1:3088/pwa/push/send -H 'Content-Type: application/json' -d '{"title":"DSH task complete"}'`.
+
+---
+
+## Security boundary
+
+**What's covered:**
+- Pairing-code brute force — the code is single-use with a 10-minute TTL, and 5 wrong attempts locks that source IP for 15 minutes.
+- Revocable tokens — lost phone, lent-out device, one click on the admin page and it stops working immediately.
+- Request volume — rate-limited per resolved real client IP, 120/min by default, 429 past that.
+- The admin surface is local-only — generating pairing codes, managing devices, triggering pushes: all local-direct-connection only, and anything through the proxy (always carries forwarded headers) gets 403.
+
+**What's not covered — your responsibility:**
+- A misconfigured reverse proxy — e.g. accidentally exposing `127.0.0.1:3088/lan-gate/admin` on the public domain too, or a wrong `X-Forwarded-Proto` making the gateway misjudge the client's protocol. These are configuration mistakes the gateway can't defend against.
+- A stolen or shared token — this is a single-user tool; the token is equivalent to full access, with no finer-grained permission tiers. Whoever has the token can use it — if you suspect a leak, revoke it and re-pair from the admin page.
+- DSH's own capability boundary — the gateway only forwards HTTPS traffic to DSH safely; it can't and doesn't add security measures DSH itself doesn't have (DSH's own `/api` trust fence is DSH's concern).
+- The state file `~/.dsh/lan-gate-state.json` stores the VAPID private key and every device's token in plaintext — this file *is* full access to your gateway. Mind its file permissions on the host, and don't sync `~/.dsh` into a shared drive or an untrusted backup location.
+
+---
+
+## FAQ
+
+**Upgrading from an older version — what do I need to do?**
+The old model approved devices by source IP, which is meaningless under the new token model. The first time the gateway starts with the new version, it detects the old state file and renames it to `lan-gate-state.json.v1.bak` (no data migration). Every device needs to go through pairing again.
+
+**The pairing code says expired or wrong — now what?**
+Codes are valid for 10 minutes and single-use — once expired or already used, go back to the local admin page and generate a new one. Five wrong codes in a row locks that source IP for 15 minutes; wait it out or try from a different network.
+
+**Not receiving push notifications?**
+Check in order: is the phone accessing an HTTPS domain (over plain HTTP the browser never registers a service worker, so push has nothing to run on)? Has the browser or the OS denied notification permission for this PWA? Check the local admin surface (`/lan-gate/status`) to see whether that device shows the 🔔 marker, confirming the subscription actually succeeded.
 
 ---
 
 ## Test locally
 
 ```bash
-npm test   # boots a mock upstream, asserts /pwa assets, HTML injection, status
+npm test   # boots a mock upstream, runs the gateway/auth/push suites: proxy+injection, pairing flow, push delivery
 ```
 
 ---
 
 ## Layout
 
-`lan-gate.mjs` (Cordis entry) · `dsh-push.mjs` (optional push host plugin) · `lib/lan-gate-server.cjs` (zero-dep gateway) · `pwa/` (manifest, sw.js, inject.js, touch-gestures.js, app.css, offline.html, icons) · `cordis.patch.yml(.example)` · `test/`
+| Path | Role |
+| --- | --- |
+| `lan-gate.mjs` | Cordis entry: spawns the gateway child process and manages its lifecycle |
+| `dsh-push.mjs` | Optional agent-done push host plugin, calls the gateway's local `/pwa/push/send` |
+| `lib/lan-gate-server.cjs` | The gateway itself: single-file CommonJS (Node stdlib + one runtime dependency, `web-push`) — HTTP/WebSocket reverse proxy, pairing/tokens, rate limiting, PWA injection, Web Push |
+| `pwa/manifest.json` | PWA install manifest |
+| `pwa/sw.js` | Service worker (offline caching + push notifications) |
+| `pwa/inject.js` | Injected page bootstrap: SW register, gesture loader, push subscribe |
+| `pwa/touch-gestures.js` | Pull-to-refresh / edge-swipe back / pinch-zoom |
+| `pwa/app.css` | Mobile touch-first CSS (`data-lan-device`-prefixed, desktop unaffected) |
+| `pwa/offline.html` | Offline fallback page |
+| `pwa/icons/` | SVG source + rasterized PNGs (192/512 + maskable) |
+| `cordis.patch.yml` / `.example` | Bundle patch layer / static-mount example |
+| `docs/spec-public-auth-push.md`, `docs/plan-public-auth-push.md` | Design spec and implementation plan for this rework |
+| `test/gateway.test.cjs` | Smoke tests: gateway boot, `/pwa` asset serving, HTML injection |
+| `test/auth.test.cjs` | Pairing flow, tokens, lockout, v1-state archival, survives restart |
+| `test/push.test.cjs` | Push subscribe/send, VAPID encryption, expired-subscription cleanup |
+| `test/util.cjs` | Shared test harness (boot/request/pair helpers) — not a test file itself |
 
-See [`AGENTS.md`](AGENTS.md) for development conventions (do not break isolation / CSS prefix rules / stable selectors).
+See [`AGENTS.md`](AGENTS.md) for development conventions.
 
 ---
 
 ## Security
 
-Installing a plugin runs third-party code with your own permissions. Run only on your own server, keep credentials away, and audit `lib/lan-gate-server.cjs` changes. Always use approval + tokens for remote access; never expose the gateway port raw on the public internet.
+Installing a plugin runs third-party code with your own permissions; being listed or published is not a security review. The gateway listens on `127.0.0.1` only by default and will not expose itself to the public internet on its own — every public-facing path must go through a reverse proxy you configure and that terminates TLS yourself. Run this only on your own server, keep the state file out of untrusted locations, and audit changes to `lib/lan-gate-server.cjs`.
 
 ## License
 

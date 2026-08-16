@@ -6,11 +6,21 @@ This file helps AI coding agents and LLM tooling understand and work in this rep
 
 `dsh-mobile-pwa` is a **Cordis plugin for DeepSeek Harness (DSH)** that turns the DSH
 Web UI into a complete mobile **PWA**. It runs a **standalone Node gateway child
-process** that securely exposes the local DSH Web UI to LAN/Tailscale phones, and
-injects PWA capability (manifest, service worker, touch layout, gestures, agent-done
-push) into the served HTML.
+process** that securely exposes the local DSH Web UI to the public internet behind
+the user's own TLS-terminating reverse proxy, and injects PWA capability (manifest,
+service worker, touch layout, gestures, agent-done push) into the served HTML.
 
-- Gateway listens on `0.0.0.0:3088`; proxies approved devices to `127.0.0.1:3080`.
+- Trust model (v2): device identity is a pairing token (cookie `lg_device`), not
+  source IP. New devices redeem a short-lived, one-time pairing code (generated
+  from the local admin page) for a long-lived token; wrong codes are rate-limited
+  and lock out.
+- Gateway listens on `127.0.0.1:3088` by default (`LAN_GATE_HOST`); reverse-proxies
+  paired devices to `127.0.0.1:3080` (`LAN_GATE_TARGET_PORT`). `X-Forwarded-For`/
+  `X-Forwarded-Proto` are honored only when the socket peer is loopback (same-host
+  proxy) or listed in `LAN_GATE_TRUSTED_PROXIES`.
+- The only IP-based trust left: a loopback socket carrying no `X-Forwarded-*`
+  headers is the local user — the sole path into the admin surface (admin page,
+  `/lan-gate/status`, `/lan-gate/action`, `/lan-gate/pair`, `/pwa/push/send`).
 - DSH's own webserver stays `127.0.0.1` — the gateway never touches DSH config or
   its `/api` trust fence.
 
@@ -19,8 +29,8 @@ push) into the served HTML.
 | Path | Role |
 | --- | --- |
 | `lan-gate.mjs` | Cordis entry. `inject: ['subprocess']`; resolves `node`, spawns `lib/lan-gate-server.cjs`, wires disposal via `ctx.effect`. Never import the server into the DSH process. |
-| `dsh-push.mjs` | OPTIONAL agent-done push host plugin. Best-effort hooks into a DSH turn-close service and POSTs to the gateway's local `/pwa/push/send`. Must never throw. |
-| `lib/lan-gate-server.cjs` | The gateway. Single-file, **zero-dependency CommonJS**. HTTP + WebSocket reverse proxy, approval state machine, tokens, rate limit, admin page, and **HTML PWA injection** + `/pwa/*` static serving + `/pwa/push/*`. |
+| `dsh-push.mjs` | OPTIONAL agent-done push host plugin. `inject: []`; subscribes to DSH event-bus names from `DSH_PUSH_EVENTS` (default `turn.end`, verify per DSH version), debounced, POSTs to the gateway's local `/pwa/push/send`. Notification body carries no conversation content. Must never throw. |
+| `lib/lan-gate-server.cjs` | The gateway. Single-file CommonJS, **Node stdlib + one runtime dependency (`web-push`)**. HTTP + WebSocket reverse proxy, pairing-code/token state machine, rate limit, admin page, real Web Push (VAPID + aes128gcm), and **HTML PWA injection** + `/pwa/*` static serving + `/pwa/push/*`. |
 | `pwa/manifest.json` | PWA install manifest. |
 | `pwa/sw.js` | Service worker: cache strategies + push notifications. |
 | `pwa/inject.js` | Injected page bootstrap: SW register, gesture loader, push subscribe. |
@@ -29,7 +39,11 @@ push) into the served HTML.
 | `pwa/offline.html` | Offline fallback page. |
 | `pwa/icons/` | SVG source + rasterized PNGs (192/512 + maskable). |
 | `cordis.patch.yml(.example)` | Bundle patch layer / static-mount example. |
-| `test/gateway.test.cjs` | Smoke tests (boots gateway behind a mock upstream). |
+| `docs/spec-public-auth-push.md`, `docs/plan-public-auth-push.md` | Design spec and implementation plan for the public-auth-push rework. |
+| `test/gateway.test.cjs` | Smoke tests: gateway boot, `/pwa` asset serving, HTML injection (boots gateway behind a mock upstream). |
+| `test/auth.test.cjs` | Pairing flow, token cookie, lockout on repeated wrong codes, v1-state-file archival, device survival across restart. |
+| `test/push.test.cjs` | Push subscribe/send, VAPID-signed encrypted delivery, expired-subscription (404/410) cleanup. |
+| `test/util.cjs` | Shared test harness (spawns the real gateway + a mock upstream, HTTP request/pairing helpers) — not a test file itself. |
 
 ## Key behaviours — don't break these
 
@@ -44,10 +58,16 @@ push) into the served HTML.
    excludes `desktop`). Desktop must never be affected.
 4. **Stable selectors**: prefer `[data-slot]`/ARIA selectors over hashed build class
    names (`Sh0Q9G_` etc.), which change per frontend build.
-5. **Persistence**: approvals stored at `~/.dsh/lan-gate-state.json`; the pending
-   list (`seen`) is in-memory and resets on restart.
-6. **Local-only admin**: `/lan-gate/status`, `/lan-gate/action`, `/pwa/push/send`
-   must reject non-local sockets (403).
+5. **Persistence**: devices, VAPID keys, and push subscriptions are stored at
+   `~/.dsh/lan-gate-state.json` (v2 schema, `{version:2, devices, vapid,
+   pushSubscriptions}`). The pairing code itself is memory-only on purpose — a
+   restart voids any outstanding code. A v1 (per-IP-approval) state file is
+   detected and archived to `.v1.bak` on load, never migrated.
+6. **Local-only admin**: `/lan-gate/status`, `/lan-gate/action`, `/lan-gate/pair`,
+   `/lan-gate/admin`, `/pwa/push/send` must reject any request whose socket isn't
+   loopback or that carries `X-Forwarded-*` headers (403). `/lan-gate/pair/claim`
+   is the deliberate exception — reachable by anyone, guarded by the code's TTL/
+   single-use and the per-IP failure lockout instead.
 7. **Port fallback**: on `EADDRINUSE`, server increments the port (up to +20).
 8. **Injection quoting**: the HTML-injected inline CSS/JS strings in
    `lib/lan-gate-server.cjs` are JS string literals — keep quote usage consistent
@@ -57,7 +77,8 @@ push) into the served HTML.
 
 - **Change port / rate / target**: top-of-file constants in
   `lib/lan-gate-server.cjs` or env vars `LAN_GATE_PORT`, `LAN_GATE_HOST`,
-  `LAN_GATE_TARGET_PORT`, `LAN_GATE_RATE_LIMIT`, `LAN_GATE_VAPID_PUBLICKEY`.
+  `LAN_GATE_TARGET_PORT`, `LAN_GATE_RATE_LIMIT`, `LAN_GATE_TRUSTED_PROXIES`,
+  `LAN_GATE_VAPID_SUBJECT`.
 - **Add a mobile CSS tweak**: append a `html[data-lan-device="phone"] ...` rule to
   `pwa/app.css` (kept in the file loaded by the injected `<link>`).
 - **Change injected page behaviour**: edit `pwa/inject.js` (wired into the injected
@@ -71,6 +92,11 @@ push) into the served HTML.
 npm test
 ```
 
-Runs `node --test test/*.test.cjs`, booting `lib/lan-gate-server.cjs` behind a mock
-DSH upstream (isolated temp `DSH_HOME`) and asserting `/pwa` asset serving, HTML
-injection, and PWA status reporting.
+Runs `node --test test/*.test.cjs`, booting the real `lib/lan-gate-server.cjs`
+behind a mock DSH upstream (isolated temp `DSH_HOME`) and driving it over real
+HTTP: `gateway.test.cjs` covers `/pwa` asset serving, HTML injection, and status
+reporting; `auth.test.cjs` covers the pairing flow, tokens, lockout, and v1-state
+archival; `push.test.cjs` covers subscribe/send and VAPID-encrypted delivery.
+Simulated remote clients use `X-Forwarded-For`/`X-Forwarded-Proto` headers on a
+loopback socket (the same shape a same-host reverse proxy produces), so the full
+"public device" path is exercised without a second real machine.

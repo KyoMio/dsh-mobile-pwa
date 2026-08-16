@@ -2,16 +2,15 @@
 
 <!-- 阶段：stage / 当前任务 task / 状态 status / 下一步 next -->
 
-- **stage**: `v0.1.0 已发布 + 已进入官方插件社区`
-- **task**: 安全网关 + PWA 注入 + 触屏 + 推送 + 开源发布
-- **status**: `完成 · 可被第三方一键安装`
-- **发布记录**:
-  - npm: `dsh-mobile-pwa@0.1.0` public（https://www.npmjs.com/package/dsh-mobile-pwa）→ `dsh plugin add dsh-mobile-pwa` 免 allowBuilds
-  - GitHub: https://github.com/zylzyqzz/dsh-mobile-pwa（公开,带 dsh-plugin topic → topics/dsh-plugin 话题页）
-  - awesome 精选 PR #576：**✅ 已由维护者 fkysly 合并**，官方 README 已含 dsh-mobile-pwa 条目（中英两份）
-  - 发布 npm 后留言 → 助合并（临门一脚）
+- **stage**: `rework/public-auth-push（fork KyoMio/dsh-mobile-pwa）· v0.2.0 开发完成待实机验收`
+- **task**: 公网部署改造：配对码 + 设备令牌认证、反代对接（X-Forwarded-*）、真 Web Push（VAPID + aes128gcm）
+- **status**: `代码 + 测试完成（13 用例，10/10 轮全绿）· 文档重写完成 · 待用户配反代后端到端验收`
+- **本轮改动**（细节见 docs/spec-public-auth-push.md + .ai/DECISIONS.md rework 一节）:
+  - 认证：废除按 IP 审批 / LAN 直通 / ?t= URL 令牌；配对码（一次性、10 分钟、5 错锁 15 分钟）→ lg_device Cookie；管理面仅本机直连
+  - 网络：默认监听 127.0.0.1，信任回环/白名单反代的 X-Forwarded-For/Proto；修复 chunked+Content-Length、连接毒化、gzip 注入损坏三个代理层 bug
+  - 推送：web-push 依赖（放弃零依赖）、VAPID 持久化、订阅要求已配对设备并设上限、404/410 自动清理、通知不带对话正文
+  - 宿主插件 dsh-push.mjs：零注入、事件名 DSH_PUSH_EVENTS 可配、去抖
 - **next**:
-  1. **真机/真实服务器端到端验证**（最重要的剩余项）：在真实 DSH 服务器 `dsh plugin add dsh-mobile-pwa` + 手机连 /lan-gate
-  2. 真机验证 PWA「添加到主屏」/ 触屏手势 / agent 通知
-  3. VAPID 公网推送落地（需要公网 push service）
-  4. 冲 star / 同步分享（进入列表后活跃度决定长期留存）
+  1. 用户侧：配反代（README 有 nginx/Caddy 模板）→ 实机安装 → 手机配对 → PWA 安装 + 推送验收
+  2. DSH_PUSH_EVENTS 事件名在实机核对（默认 turn.end 是猜测值）
+  3. 验收通过后合回 main、打 tag、考虑发 npm 或给上游提 PR

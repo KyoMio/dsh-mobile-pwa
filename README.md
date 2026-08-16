@@ -54,7 +54,7 @@
 ### 1. 安装插件
 
 ```bash
-dsh plugin --profile web add github:KyoMio/dsh-mobile-pwa#rework/public-auth-push
+dsh plugin --profile web add github:KyoMio/dsh-mobile-pwa
 ```
 
 已声明 `dsh.bundle` manifest，装完重启一下 `dsh web` 让新插件生效。
@@ -64,7 +64,6 @@ dsh plugin --profile web add github:KyoMio/dsh-mobile-pwa#rework/public-auth-pus
 ```bash
 git clone https://github.com/KyoMio/dsh-mobile-pwa.git
 cd dsh-mobile-pwa
-git checkout rework/public-auth-push
 dsh plugin --profile web add ./dsh-mobile-pwa
 ```
 

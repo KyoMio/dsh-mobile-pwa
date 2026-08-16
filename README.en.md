@@ -52,7 +52,7 @@ Public device (phone/laptop) --HTTPS--> your own reverse proxy (nginx/Caddy, ter
 ### 1. Install the plugin
 
 ```bash
-dsh plugin --profile web add github:KyoMio/dsh-mobile-pwa#rework/public-auth-push
+dsh plugin --profile web add github:KyoMio/dsh-mobile-pwa
 ```
 
 The package declares a `dsh.bundle` manifest; restart `dsh web` after installing.
@@ -62,7 +62,6 @@ Local-directory install (for hacking on the code yourself):
 ```bash
 git clone https://github.com/KyoMio/dsh-mobile-pwa.git
 cd dsh-mobile-pwa
-git checkout rework/public-auth-push
 dsh plugin --profile web add ./dsh-mobile-pwa
 ```
 

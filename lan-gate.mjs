@@ -14,7 +14,26 @@ export const inject = ['subprocess']
 const here = dirname(fileURLToPath(import.meta.url))
 const serverFile = join(here, 'lib', 'lan-gate-server.cjs')
 
-export function apply(ctx) {
+// Optional cordis config (set on the insert row in your profile patch):
+//   { port, host, targetPort, rateLimit, trustedProxies, vapidSubject }
+// Values are translated to LAN_GATE_* env vars; explicit env vars win.
+const CONFIG_ENV = {
+  port: 'LAN_GATE_PORT',
+  host: 'LAN_GATE_HOST',
+  targetPort: 'LAN_GATE_TARGET_PORT',
+  rateLimit: 'LAN_GATE_RATE_LIMIT',
+  trustedProxies: 'LAN_GATE_TRUSTED_PROXIES',
+  vapidSubject: 'LAN_GATE_VAPID_SUBJECT',
+}
+
+export function apply(ctx, config) {
+  if (config && typeof config === 'object') {
+    for (const [key, envName] of Object.entries(CONFIG_ENV)) {
+      if (config[key] !== undefined && config[key] !== null && process.env[envName] === undefined) {
+        process.env[envName] = String(config[key])
+      }
+    }
+  }
   const timer = ctx.get('timer')
   let handle = null
 

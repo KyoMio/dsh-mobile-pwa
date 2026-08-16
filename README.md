@@ -165,9 +165,20 @@ dsh.example.com {
 | `LAN_GATE_PORT` | `3088` | 网关监听端口；被占用会自动往上 +1 重试（最多 +20） |
 | `LAN_GATE_HOST` | `127.0.0.1` | 网关监听地址。留默认值 + 反代是推荐做法；只有你清楚自己在干什么时才改成别的 |
 | `LAN_GATE_TARGET_PORT` | `3080` | 本机 DSH Web UI 端口，网关反代到这里 |
-| `LAN_GATE_RATE_LIMIT` | `120` | 按解析出的真实客户端 IP 算的每分钟请求上限，超了返回 429 |
+| `LAN_GATE_RATE_LIMIT` | `120` | **只对未配对/未认证请求**按真实客户端 IP 计的每分钟上限（保护配对页和配对接口）。本机和已配对设备不受限——它们的防线是令牌与吊销 |
 | `LAN_GATE_TRUSTED_PROXIES` | 空 | 逗号分隔的 IP 列表。反代和网关不在同一台机器（回环地址）时，把反代的出口 IP 填进来，网关才会信任它带来的 `X-Forwarded-For`/`X-Forwarded-Proto` |
 | `LAN_GATE_VAPID_SUBJECT` | `mailto:admin@localhost` | Web Push 用的 VAPID JWT subject，一般不用改 |
+
+以上配置除了环境变量，也可以直接写在 profile 的 patch 文件里（`~/.dsh/profiles/web/cordis.patch.yml`，Cordis 标准的 config 能力，字段名去掉 `LAN_GATE_` 前缀转小驼峰；显式环境变量优先）：
+
+```yaml
+- insert:
+    - id: dsh-mobile-pwa
+      name: dsh-mobile-pwa
+      config:
+        rateLimit: 600
+        trustedProxies: 192.168.31.1
+```
 
 ---
 

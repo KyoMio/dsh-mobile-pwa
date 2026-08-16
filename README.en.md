@@ -163,9 +163,20 @@ The admin page also lets you set a device's kind (phone / desktop / auto layout)
 | `LAN_GATE_PORT` | `3088` | Gateway listen port; on `EADDRINUSE` it retries up the port range (up to +20) |
 | `LAN_GATE_HOST` | `127.0.0.1` | Gateway listen address. Leaving the default in place plus a reverse proxy is the recommended setup — only change this if you know exactly what you're doing |
 | `LAN_GATE_TARGET_PORT` | `3080` | Local DSH Web UI port the gateway reverse-proxies to |
-| `LAN_GATE_RATE_LIMIT` | `120` | Requests per minute allowed per resolved real client IP before returning 429 |
+| `LAN_GATE_RATE_LIMIT` | `120` | Per-real-client-IP per-minute cap **for unpaired/unauthenticated requests only** (protects the pairing surface). Local users and paired devices are exempt — their guardrail is the token + revocation |
 | `LAN_GATE_TRUSTED_PROXIES` | empty | Comma-separated IP list. When the proxy and gateway aren't on the same host (i.e. not a loopback socket), list the proxy's egress IP here so the gateway trusts the `X-Forwarded-For`/`X-Forwarded-Proto` it sends |
 | `LAN_GATE_VAPID_SUBJECT` | `mailto:admin@localhost` | VAPID JWT subject used for Web Push; rarely needs changing |
+
+Besides env vars, all of the above can live in the profile patch file (`~/.dsh/profiles/web/cordis.patch.yml`, standard Cordis config; drop the `LAN_GATE_` prefix and camelCase the name; explicit env vars win):
+
+```yaml
+- insert:
+    - id: dsh-mobile-pwa
+      name: dsh-mobile-pwa
+      config:
+        rateLimit: 600
+        trustedProxies: 192.168.31.1
+```
 
 ---
 

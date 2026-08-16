@@ -111,6 +111,23 @@ test('five wrong codes lock the client out', async () => {
   } finally { await stop() }
 })
 
+test('rate limit hits unpaired clients only', async () => {
+  const { stop } = await boot({ LAN_GATE_RATE_LIMIT: '5' })
+  try {
+    const { cookie } = await pairDevice(PORT, '快手机')
+    for (let i = 0; i < 12; i++) {
+      const r = await request(PORT, { path: '/', headers: { ...REMOTE_HEADERS, cookie } })
+      assert.strictEqual(r.status, 200, 'paired device is never rate limited (request ' + i + ')')
+    }
+    let saw429 = false
+    for (let i = 0; i < 8; i++) {
+      const r = await request(PORT, { path: '/', headers: { 'x-forwarded-for': '203.0.113.77' } })
+      if (r.status === 429) { saw429 = true; break }
+    }
+    assert.ok(saw429, 'unpaired stranger hits the limit')
+  } finally { await stop() }
+})
+
 test('v1 state file is archived, not loaded', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mobile-pwa-test-'))
   fs.writeFileSync(path.join(home, 'lan-gate-state.json'), JSON.stringify({ decisions: { '192.168.1.5': { allow: true, token: 'x' } } }))

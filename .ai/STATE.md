@@ -12,5 +12,5 @@
   - 宿主插件 dsh-push.mjs：零注入、事件名 DSH_PUSH_EVENTS 可配、去抖
 - **next**:
   1. 用户侧：配反代（README 有 nginx/Caddy 模板）→ 实机安装 → 手机配对 → PWA 安装 + 推送验收
-  2. DSH_PUSH_EVENTS 事件名在实机核对（默认 turn.end 是猜测值）
+  2. ~~事件名核对~~ 已定：`agent/turn-stopping`（官方 docs/subsystems/core + scoped-events catalog 证实，每回合关闭前触发一次）
   3. 验收通过后合回 main、打 tag、考虑发 npm 或给上游提 PR

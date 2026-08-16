@@ -5,9 +5,11 @@
 //
 //   - inject: [] — uses only the Cordis event bus (ctx.on), no services, so
 //     0811 strict injection can never block loading.
-//   - Event names are configurable: DSH_PUSH_EVENTS (comma-separated),
-//     default "turn.end". Verify the real name on your DSH version and set
-//     the env accordingly; an unknown name simply never fires.
+//   - Event names are configurable: DSH_PUSH_EVENTS (comma-separated).
+//     Default "agent/turn-stopping" — the official turn-close checkpoint
+//     ("the turn is about to close: the model owes no response"), payload
+//     { agent, turn, signal }, per deepseek-harness docs/subsystems/core
+//     and the scoped-events catalog. An unknown name simply never fires.
 //   - Debounced: at most one notification per DSH_PUSH_DEBOUNCE_MS (default
 //     15s), so event bursts produce a single nudge.
 //   - Notification carries NO conversation content — the push service
@@ -16,7 +18,7 @@ export const name = 'dsh-mobile-pwa-push'
 export const inject = []
 
 const GATEWAY_PORT = Number(process.env.LAN_GATE_PORT || 3088)
-const EVENTS = String(process.env.DSH_PUSH_EVENTS || 'turn.end').split(',').map((s) => s.trim()).filter(Boolean)
+const EVENTS = String(process.env.DSH_PUSH_EVENTS || 'agent/turn-stopping').split(',').map((s) => s.trim()).filter(Boolean)
 const DEBOUNCE_MS = Number(process.env.DSH_PUSH_DEBOUNCE_MS || 15000)
 
 export function apply(ctx) {

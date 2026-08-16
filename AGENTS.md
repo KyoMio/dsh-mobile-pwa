@@ -29,7 +29,7 @@ service worker, touch layout, gestures, agent-done push) into the served HTML.
 | Path | Role |
 | --- | --- |
 | `lan-gate.mjs` | Cordis entry. `inject: ['subprocess']`; resolves `node`, spawns `lib/lan-gate-server.cjs`, wires disposal via `ctx.effect`. Never import the server into the DSH process. |
-| `dsh-push.mjs` | OPTIONAL agent-done push host plugin. `inject: []`; subscribes to DSH event-bus names from `DSH_PUSH_EVENTS` (default `agent/turn-stopping`, the official turn-close checkpoint), debounced, POSTs to the gateway's local `/pwa/push/send`. Notification body carries no conversation content. Must never throw. |
+| `dsh-push.mjs` | OPTIONAL agent-done push host plugin. `inject: []`; subscribes to DSH event-bus names from `DSH_PUSH_EVENTS` (default `agent/turn-stopping`, the official turn-close checkpoint), debounced, POSTs to the gateway's local `/pwa/push/send`. Notification body carries no conversation content by default; `DSH_PUSH_SUMMARY=1` opts into including the turn's final assistant message (payload is aes128gcm end-to-end encrypted). Must never throw. |
 | `lib/lan-gate-server.cjs` | The gateway. Single-file CommonJS, **Node stdlib + one runtime dependency (`web-push`)**. HTTP + WebSocket reverse proxy, pairing-code/token state machine, rate limit, admin page, real Web Push (VAPID + aes128gcm), and **HTML PWA injection** + `/pwa/*` static serving + `/pwa/push/*`. |
 | `pwa/manifest.json` | PWA install manifest. |
 | `pwa/sw.js` | Service worker: cache strategies + push notifications. |

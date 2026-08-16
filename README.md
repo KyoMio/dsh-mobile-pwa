@@ -176,7 +176,7 @@ dsh.example.com {
 - 推送内容只有标题和一句简短正文（比如「DSH 任务完成」），**不携带任何对话内容**——走的是标准 Web Push（VAPID 签名 + aes128gcm 加密），只有推送服务商和你的浏览器能看到密文。
 - 设备被吊销时，它的推送订阅一并删除；推送目标返回 404/410（订阅已失效）时网关会自动清掉这条订阅。
 - 手机浏览器要求页面必须是 HTTPS 才会注册 Service Worker，所以推送和离线能力都依赖第 2 步配好的反代——反代没配好之前，这两项在真机上都不会生效。
-- 「agent 干完活自动推送」由可选宿主插件 `dsh-push.mjs` 负责：它监听 DSH 事件总线并调用本机 `/pwa/push/send`。事件名通过 `DSH_PUSH_EVENTS`（逗号分隔）配置，默认 `agent/turn-stopping`——官方文档定义的「回合即将关闭」检查点（模型不再欠响应、无存活工具调用时触发，每回合一次）；如果你的 DSH 版本更旧/更新导致事件名不同，用该环境变量覆盖即可。`DSH_PUSH_DEBOUNCE_MS`（默认 15000）控制两条通知的最小间隔。不装它也可以自己在任何脚本里 `curl -X POST http://127.0.0.1:3088/pwa/push/send -H 'Content-Type: application/json' -d '{"title":"DSH 任务完成"}'` 手动触发。
+- 「agent 干完活自动推送」由可选宿主插件 `dsh-push.mjs` 负责：它监听 DSH 事件总线并调用本机 `/pwa/push/send`。事件名通过 `DSH_PUSH_EVENTS`（逗号分隔）配置，默认 `agent/turn-stopping`——官方文档定义的「回合即将关闭」检查点（模型不再欠响应、无存活工具调用时触发，每回合一次）；如果你的 DSH 版本更旧/更新导致事件名不同，用该环境变量覆盖即可。`DSH_PUSH_DEBOUNCE_MS`（默认 15000）控制两条通知的最小间隔。想让通知带上这回合的结果摘要？设 `DSH_PUSH_SUMMARY=1`，通知正文会换成本回合最后一条助手消息（截 120 字）——推送 payload 本身是 aes128gcm 端到端加密的，Google/Apple 的推送服务器只见密文，剩下的暴露面是你自己的锁屏和通知中心（两大系统都支持「锁屏隐藏通知内容」，介意就开）。不装它也可以自己在任何脚本里 `curl -X POST http://127.0.0.1:3088/pwa/push/send -H 'Content-Type: application/json' -d '{"title":"DSH 任务完成"}'` 手动触发。
 
 ---
 

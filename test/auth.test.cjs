@@ -111,6 +111,25 @@ test('five wrong codes lock the client out', async () => {
   } finally { await stop() }
 })
 
+test('origin and referer are rewritten to the upstream origin', async () => {
+  const http = require('node:http')
+  const captured = []
+  const target = await new Promise((resolve) => {
+    const srv = http.createServer((req, res) => { captured.push(req.headers); res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{}') })
+    srv.listen(TARGET_PORT, '127.0.0.1', () => resolve(srv))
+  })
+  const gw = startGateway(PORT, TARGET_PORT)
+  await gw.ready
+  try {
+    const { cookie } = await pairDevice(PORT, '市场机')
+    await request(PORT, { method: 'POST', path: '/api/market/install', headers: { ...REMOTE_HEADERS, cookie, origin: 'https://dsh.example.com', referer: 'https://dsh.example.com/market?page=2' }, body: {} })
+    assert.strictEqual(captured.length, 1)
+    assert.strictEqual(captured[0].origin, 'http://127.0.0.1:' + TARGET_PORT, 'Origin rewritten to upstream origin')
+    assert.strictEqual(captured[0].referer, 'http://127.0.0.1:' + TARGET_PORT + '/market?page=2', 'Referer rewritten, path preserved')
+    assert.strictEqual(captured[0].host, '127.0.0.1:' + TARGET_PORT)
+  } finally { await stopAll(target, gw.child) }
+})
+
 test('rate limit hits unpaired clients only', async () => {
   const { stop } = await boot({ LAN_GATE_RATE_LIMIT: '5' })
   try {

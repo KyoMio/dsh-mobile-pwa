@@ -71,6 +71,12 @@ test('pairing flow: code -> cookie -> proxied access; kind & revoke via admin', 
     assert.ok(phonePage.body.includes('data-lan-device="phone"'), 'phone kind injected')
     assert.ok(!phonePage.body.includes('href="/lan-gate/admin"'), 'paired remote device gets no admin entry chip')
 
+    // Regression guard: the push opt-in must not be gated on device kind —
+    // devices left at the default 'auto' carry no data-lan-device attribute
+    // and were silently never offered push.
+    assert.ok(page.body.includes('askPush'), 'auto-kind device still gets the push opt-in entry')
+    assert.ok(page.body.includes('PushManager'), 'push support probe present for auto-kind device')
+
     // Revoke kills the cookie immediately.
     await request(PORT, { method: 'POST', path: '/lan-gate/action', body: { action: 'revoke', id } })
     const after = await request(PORT, { path: '/', headers: { ...REMOTE_HEADERS, cookie } })

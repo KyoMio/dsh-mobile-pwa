@@ -164,7 +164,7 @@ The admin page also lets you set a device's kind (phone / desktop / auto layout)
 | `LAN_GATE_TARGET_PORT` | `3080` | Local DSH Web UI port the gateway reverse-proxies to |
 | `LAN_GATE_RATE_LIMIT` | `120` | Per-real-client-IP per-minute cap **for unpaired/unauthenticated requests only** (protects the pairing surface). Local users and paired devices are exempt — their guardrail is the token + revocation |
 | `LAN_GATE_TRUSTED_PROXIES` | empty | Comma-separated IP list. When the proxy and gateway aren't on the same host (i.e. not a loopback socket), list the proxy's egress IP here so the gateway trusts the `X-Forwarded-For`/`X-Forwarded-Proto` it sends |
-| `LAN_GATE_VAPID_SUBJECT` | `mailto:admin@localhost` | VAPID JWT subject used for Web Push; rarely needs changing |
+| `LAN_GATE_VAPID_SUBJECT` | `mailto:admin@localhost` | VAPID contact for Web Push. **Set this to a real mailto: address or https:// URL**: Apple rejects placeholder subjects with `403 BadJwtToken`, silently killing push to every iOS device (Google/Mozilla do not check). The gateway warns at startup if it looks invalid |
 
 Besides env vars, the **recommended way is the config file** `~/.dsh/lan-gate.config.json` (shared by the gateway and the push plugin; restart `dsh web` after editing; explicit env vars win over the file):
 
